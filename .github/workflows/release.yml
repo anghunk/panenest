@@ -1,0 +1,153 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths: [mygo.json]
+    tags: ["v*"]
+  workflow_dispatch:
+
+# 同一时间只处理一个版本，避免重复触发时并发修改 Release。
+concurrency:
+  group: panenest-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.version.outputs.release }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: 检查版本与发布状态
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          version="$(jq -er '.version | select(type == "string")' mygo.json)"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::mygo.json 的版本号必须采用 x.y.z 格式"
+            exit 1
+          fi
+          tag="v$version"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            test "$GITHUB_REF_NAME" = "$tag"
+          elif [[ "$EVENT_NAME" == push && ! "$BEFORE" =~ ^0+$ ]]; then
+            previous="$(git show "$BEFORE:mygo.json" | jq -r .version)"
+            if [[ "$previous" == "$version" ]]; then
+              echo "仅配置变化，版本号未变化，跳过发布"
+              exit 0
+            fi
+          fi
+          if git show-ref --verify --quiet "refs/tags/$tag"; then
+            test "$(git rev-list -n 1 "$tag")" = "$GITHUB_SHA" || {
+              echo "::error::$tag 已指向其他提交，请更新版本号"
+              exit 1
+            }
+          fi
+          # API 错误应中止，只有确实不存在的 Release 才按新版本处理。
+          releases="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[] | [.tag_name, .draft] | @tsv')"
+          if printf '%s\n' "$releases" | grep -qxF "$tag"$'\tfalse'; then
+            echo "$tag 已发布，跳过重复构建"
+            exit 0
+          fi
+          echo "release=true" >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: version
+    if: needs.version.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: go test ./internal/...
+
+  build:
+    needs: version
+    if: needs.version.outputs.release == 'true'
+    name: Build (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: macos-latest, platform: darwin/arm64, target: darwin-arm64 }
+          - { runner: macos-latest, platform: darwin/amd64, target: darwin-amd64 }
+          - { runner: ubuntu-latest, platform: windows/amd64, target: windows-amd64 }
+          - { runner: ubuntu-latest, platform: windows/arm64, target: windows-arm64 }
+          - { runner: ubuntu-latest, platform: linux/amd64, target: linux-amd64 }
+          - { runner: ubuntu-latest, platform: linux/arm64, target: linux-arm64 }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: 安装 Windows 安装包工具
+        if: startsWith(matrix.platform, 'windows/')
+        run: sudo apt-get update && sudo apt-get install -y nsis
+      # 使用项目的本地签名配置，不需要上游证书或自动更新密钥。
+      - name: 构建应用
+        run: go tool mygo build -platform "${{ matrix.platform }}"
+      - name: 收集分发包
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          case "$TARGET" in
+            darwin-*) cp build/"$TARGET"/*.dmg dist/ ;;
+            windows-*) cp build/"$TARGET"/*-setup-*.exe dist/ ;;
+            linux-*) cp build/"$TARGET"/*.deb build/"$TARGET"/*.tar.gz dist/ ;;
+          esac
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    needs: [version, test, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-*
+          merge-multiple: true
+          path: dist
+      - name: 生成校验和
+        run: cd dist && sha256sum * > SHA256SUMS
+      - name: 发布 GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # 先创建草稿，附件全部上传成功后才公开；失败后可以重新运行。
+          releases="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[] | [.tag_name, .draft] | @tsv')"
+          if printf '%s\n' "$releases" | grep -qxF "$TAG"$'\tfalse'; then
+            echo "::error::$TAG 已发布，不覆盖现有 Release"
+            exit 1
+          fi
+          if ! printf '%s\n' "$releases" | grep -qxF "$TAG"$'\ttrue'; then
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" --draft --title "$TAG" --generate-notes
+          fi
+          gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false

@@ -1,0 +1,19 @@
+{
+  "name": "PaneNest",
+  "identifier": "local.abc.panenest",
+  "version": "0.0.1",
+  "out": "build",
+  "i18n": {
+    "dir": "locales",
+    "source": "en"
+  },
+  "macos": {
+    "signingIdentity": "-",
+    "entitlements": "entitlements.plist",
+    "infoPlist": {
+      "NSMicrophoneUsageDescription": "A program running in PaneNest would like to use the microphone.",
+      "NSCameraUsageDescription": "A program running in PaneNest would like to use the camera.",
+      "NSAppleEventsUsageDescription": "A program running in PaneNest would like to control another app."
+    }
+  }
+}
