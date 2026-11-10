@@ -29,8 +29,9 @@ const idleHold = 700 * time.Millisecond
 // (info.URL), which the app shows: it has neither, only its place in its
 // session and the page the app last told.
 type pane struct {
-	d   *Daemon
-	sid string // the session's it belongs to
+	d       *Daemon
+	project string
+	sid     string // the session's it belongs to
 
 	// mu guards the fields below, and orders the output the emulator and
 	// the clients get with clients attaching. The emulator's callbacks
@@ -145,6 +146,23 @@ func (s *pane) start(command []string, env []string) error {
 	name := shellName(shell)
 	bin := s.d.binFirst()
 	args := shellArgs(shell, bin, command)
+	env = append(env[:len(env):len(env)], "PANENEST_NODE_BIN=")
+	if version := s.nodeVersion(); version != "" {
+		node, err := nodeBin(version)
+		if err != nil {
+			return err
+		}
+		if bin == "" {
+			bin = filepath.Join(s.d.dir, "bin")
+		}
+		var extra []string
+		args, extra, err = nodeShellArgs(shell, bin, node, command)
+		if err != nil {
+			return err
+		}
+		env = append(env[:len(env):len(env)], extra...)
+	}
+
 	if bin != "" && name == "zsh" {
 		env = append(env[:len(env):len(env)], zshEnv(bin)...)
 	}

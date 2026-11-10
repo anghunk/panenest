@@ -62,6 +62,7 @@ func settingsIndex() []searchEntry {
 
 		{"shell", locales.SetShell(), "command fish zsh bash login"},
 		{"shell", locales.SetScrollback(), "scrollback-limit history buffer lines memory"},
+		{"shell", "默认 Node 版本", "node nodejs nvm fnm version 版本"},
 		{"shell", locales.SetEnvironment(), "env variables path"},
 
 		{"browser", locales.SetBlockAds(), "browser-block-ads browser-filter-list ad blocker adblock trackers filter lists easylist easyprivacy peter lowe fanboy cookie annoyances social china privacy web"},

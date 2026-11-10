@@ -16,6 +16,7 @@ import (
 // guards its fields.
 type session struct {
 	id, project, name string
+	nodeVersion       string
 	agentNamed        bool // name is an agent's (proto.Session.AgentNamed)
 	created           int64
 	restored          bool
@@ -51,7 +52,7 @@ func (d *Daemon) stateLocked() proto.State {
 // sessionInfo describes a session; d.mu is held.
 func (d *Daemon) sessionInfo(s *session) proto.Session {
 	info := proto.Session{
-		ID: s.id, Project: s.project, Name: s.name, AgentNamed: s.agentNamed,
+		ID: s.id, Project: s.project, Name: s.name, NodeVersion: s.nodeVersion, AgentNamed: s.agentNamed,
 		Layout: s.layout.Clone(), Focus: s.focus, Zoomed: s.zoomed, Worktree: s.worktree,
 		Panes: make([]proto.Pane, 0, len(s.panes)),
 	}
@@ -257,6 +258,7 @@ func (d *Daemon) startPane(sid string, p proto.CreateParams, dir string) (*pane,
 	if err != nil || pn.info.Browser() {
 		return pn, err
 	}
+	pn.project = p.Project
 	if err := pn.start(p.Command, p.Env); err != nil {
 		pn.term.Close()
 		return nil, err
@@ -293,6 +295,7 @@ func (d *Daemon) create(p proto.CreateParams) (proto.Session, error) {
 		dir = wt.Path
 	}
 	s := &session{id: newID(), project: project, name: strings.TrimSpace(p.Name), created: time.Now().UnixMilli(), worktree: wt}
+	p.Project = project
 	pn, err := d.startPane(s.id, p, dir)
 	if err != nil {
 		return proto.Session{}, err

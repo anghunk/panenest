@@ -1605,3 +1605,39 @@ func TestSSHConnectionDragOrder(t *testing.T) {
 		t.Fatal("排序未正确保存连接信息")
 	}
 }
+
+// TestNodeVersionBadges 验证明暗主题下项目和标签页的版本徽标，以及清除配置后的移除。
+func TestNodeVersionBadges(t *testing.T) {
+	for _, dark := range []bool{false, true} {
+		name := map[bool]string{false: "light", true: "dark"}[dark]
+		t.Run(name, func(t *testing.T) {
+			a := testApp(t)
+			a.prefs.SidebarWidth = minSidebar
+			a.st.Projects[0].Name = "A project with a very long name"
+			a.st.Projects[0].NodeVersion = "22.14.0"
+			a.st.Sessions[0].Name = "A tab with a very long name"
+			a.st.Sessions[0].NodeVersion = "20.18.0"
+			tt := ui.NewTester(a.view, 1100, 640)
+			tt.SetDark(dark)
+			tt.Frame()
+			tt.Advance(time.Second)
+			for _, version := range []string{"v22.14.0", "v20.18.0"} {
+				if !tt.HasText(version) {
+					t.Fatalf("missing badge %s: %q", version, tt.Texts())
+				}
+			}
+			tab, ok := tt.Find(a.st.Sessions[0].Name)
+			close, found := tt.Find(locales.ActionCloseSession())
+			if !ok || !found || close.W < 20 || close.X+close.W > tab.X+tab.W {
+				t.Fatalf("close button %v outside tab %v", close, tab)
+			}
+			shot(t, tt, "node-version-badges-"+name)
+			a.st.Projects[0].NodeVersion = ""
+			a.st.Sessions[0].NodeVersion = ""
+			tt.Frame()
+			if tt.HasText("v22.14.0") || tt.HasText("v20.18.0") {
+				t.Fatal("cleared version badge remains")
+			}
+		})
+	}
+}

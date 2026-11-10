@@ -63,9 +63,10 @@ type Settings struct {
 	ScrollDiscrete  float32 `json:"scrollDiscrete"`
 
 	// Shell
-	Shell      string   `json:"shell"` // "" the account's login shell
-	Env        []string `json:"env"`   // "KEY=value", added to every pane's
-	Scrollback int      `json:"scrollback"`
+	NodeVersion string   `json:"nodeVersion"`
+	Shell       string   `json:"shell"` // "" the account's login shell
+	Env         []string `json:"env"`   // "KEY=value", added to every pane's
+	Scrollback  int      `json:"scrollback"`
 
 	// Notifications
 	NotifyWaiting bool `json:"notifyWaiting"` // a session needs you

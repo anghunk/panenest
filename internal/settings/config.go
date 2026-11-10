@@ -107,6 +107,7 @@ func mapChoice(name, doc string, f func(*Settings) *string, file, ours []string)
 // keys are the configuration's keys, in the order a new file and
 // `panenest config show` list them.
 var keys = []key{
+	stringKey("node-version", "默认 Node 版本；留空使用 shell 默认版本", func(s *Settings) *string { return &s.NodeVersion }),
 	mapChoice("new-session-directory", "where a new session starts", func(s *Settings) *string { return &s.NewSessionDir },
 		[]string{"current", "project", "home"}, []string{"current", "project", "home"}),
 	choiceKey("session-name", "what names a session you or an agent didn't: the program in the pane you're in, else in the one that most needs you; the program in the one that most needs you; or the first pane's folder",

@@ -24,15 +24,16 @@ type savedState struct {
 }
 
 type savedSession struct {
-	ID         string          `json:"id"`
-	Project    string          `json:"project"`
-	Name       string          `json:"name,omitempty"`
-	AgentNamed bool            `json:"agentNamed,omitempty"`
-	Created    int64           `json:"created"`
-	Layout     *proto.Layout   `json:"layout,omitempty"`
-	Focus      string          `json:"focus,omitempty"`
-	Panes      []savedPane     `json:"panes"`
-	Worktree   *proto.Worktree `json:"worktree,omitempty"`
+	NodeVersion string          `json:"nodeVersion,omitempty"`
+	ID          string          `json:"id"`
+	Project     string          `json:"project"`
+	Name        string          `json:"name,omitempty"`
+	AgentNamed  bool            `json:"agentNamed,omitempty"`
+	Created     int64           `json:"created"`
+	Layout      *proto.Layout   `json:"layout,omitempty"`
+	Focus       string          `json:"focus,omitempty"`
+	Panes       []savedPane     `json:"panes"`
+	Worktree    *proto.Worktree `json:"worktree,omitempty"`
 }
 
 type savedPane struct {
@@ -80,7 +81,7 @@ func (d *Daemon) saveState() {
 	d.mu.Lock()
 	st := savedState{Version: 2, Projects: d.projects, Saved: time.Now().UnixMilli()}
 	for _, s := range d.sessions {
-		ss := savedSession{ID: s.id, Project: s.project, Name: s.name, AgentNamed: s.agentNamed, Created: s.created, Layout: s.layout, Focus: s.focus, Worktree: s.worktree}
+		ss := savedSession{NodeVersion: s.nodeVersion, ID: s.id, Project: s.project, Name: s.name, AgentNamed: s.agentNamed, Created: s.created, Layout: s.layout, Focus: s.focus, Worktree: s.worktree}
 		for _, p := range s.panes {
 			p.mu.Lock()
 			sp := savedPane{ID: p.info.ID, Dir: p.info.Dir, Command: p.info.Command, URL: p.info.URL,
@@ -144,7 +145,8 @@ func (d *Daemon) restore() {
 	d.projects = st.Projects
 	when := time.UnixMilli(st.Saved).Format("Mon Jan 2 15:04")
 	for _, ss := range st.Sessions {
-		s := &session{id: ss.ID, project: ss.Project, name: ss.Name, agentNamed: ss.AgentNamed, created: ss.Created, restored: true, focus: ss.Focus, worktree: ss.Worktree}
+		s := &session{nodeVersion: ss.NodeVersion, id: ss.ID, project: ss.Project, name: ss.Name, agentNamed: ss.AgentNamed, created: ss.Created, restored: true, focus: ss.Focus, worktree: ss.Worktree}
+		d.sessions = append(d.sessions, s)
 		for _, sp := range ss.Panes {
 			if !set.ResumeAgents {
 				sp.Agent = nil
@@ -155,6 +157,7 @@ func (d *Daemon) restore() {
 			}
 		}
 		if len(s.panes) == 0 {
+			d.sessions = d.sessions[:len(d.sessions)-1]
 			continue
 		}
 		if sameLeaves(ss.Layout, s.panes) {
@@ -167,7 +170,6 @@ func (d *Daemon) restore() {
 				s.layout = s.layout.Split(s.panes[0].info.ID, p.info.ID, "right", 0.5)
 			}
 		}
-		d.sessions = append(d.sessions, s)
 		d.log.Printf("session %s restored, %d panes", s.id, len(s.panes))
 	}
 }

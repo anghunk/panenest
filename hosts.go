@@ -28,9 +28,13 @@ import (
 // each with a connection of its own, so that one far away, or gone,
 // holds up no other.
 type host struct {
-	name string        // "" for this machine
-	cfg  settings.Host // a remote host's, as configured
-	addr remote.Addr
+	nodeVersionsClient                      *client.Client
+	nodeVersions                            []string
+	nodeVersionsLoaded, nodeVersionsLoading bool
+	nodeVersionsError                       string
+	name                                    string        // "" for this machine
+	cfg                                     settings.Host // a remote host's, as configured
+	addr                                    remote.Addr
 
 	rc        *remote.Conn // a remote host's connection, nil while there is none
 	cl        *client.Client

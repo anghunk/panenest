@@ -145,11 +145,18 @@ type State struct {
 	Conversations uint64 `json:"conversations,omitempty"`
 }
 
+// NodeVersionParams 设置项目或标签页的 Node 版本；空值表示继承。
+type NodeVersionParams struct {
+	ID      string `json:"id"`
+	Version string `json:"version"`
+}
+
 // Project groups sessions, usually those of one repository.
 type Project struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Dir  string `json:"dir,omitempty"`
+	NodeVersion string `json:"nodeVersion,omitempty"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Dir         string `json:"dir,omitempty"`
 }
 
 // Pane is a terminal the daemon keeps running: a shell in a
@@ -297,6 +304,7 @@ var AgentNames = map[string]string{"claude": "Claude Code", "codex": "Codex", "p
 // panes, side by side. Its Pane fields are those of its lead pane, the
 // one that most needs the user (see Lead), so that a session reads as one.
 type Session struct {
+	NodeVersion string `json:"nodeVersion,omitempty"`
 	Pane
 	ID      string `json:"id"` // the session's, not the lead pane's
 	Project string `json:"project"`

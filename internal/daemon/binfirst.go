@@ -45,6 +45,7 @@ func writeZshenv(bin string) error {
 [[ -r ${ZDOTDIR:-$HOME}/.zshenv ]] && builtin source ${ZDOTDIR:-$HOME}/.zshenv
 __panenest_bin_first() {
   path=(BIN ${path:#BIN})
+  if [[ -n $PANENEST_NODE_BIN ]]; then path=("$PANENEST_NODE_BIN" ${path:#$PANENEST_NODE_BIN}); fi
   precmd_functions=(${precmd_functions:#__panenest_bin_first})
   unfunction __panenest_bin_first
 }

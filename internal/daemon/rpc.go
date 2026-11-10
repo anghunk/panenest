@@ -492,6 +492,46 @@ func (d *Daemon) call(c *controlConn, method string, raw json.RawMessage) (any, 
 			return pr, nil
 		}
 
+	case "node.versions":
+		versions := []string{}
+		for _, node := range installedNodes() {
+			if !slices.Contains(versions, node.version) {
+				versions = append(versions, node.version)
+			}
+		}
+		return versions, nil
+
+	case "project.node-version", "session.node-version":
+		var p proto.NodeVersionParams
+		if err := decode(&p); err != nil {
+			return nil, err
+		}
+		version := strings.TrimSpace(p.Version)
+		if version != "" {
+			if _, err := nodeBin(version); err != nil {
+				return nil, err
+			}
+		}
+		d.mu.Lock()
+		found := false
+		if method == "project.node-version" {
+			for i := range d.projects {
+				if d.projects[i].ID == p.ID {
+					d.projects[i].NodeVersion = version
+					found = true
+				}
+			}
+		} else if s := d.findSessionLocked(p.ID); s != nil {
+			s.nodeVersion = version
+			found = true
+		}
+		d.mu.Unlock()
+		if !found {
+			return nil, errors.New("项目或标签页不存在")
+		}
+		d.changed()
+		return true, nil
+
 	case "project.rename":
 		var p proto.ProjectParams
 		if err := decode(&p); err != nil {

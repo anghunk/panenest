@@ -139,9 +139,11 @@ type App struct {
 	// in tests.
 	idleTime func() time.Duration
 
-	renaming        string
-	renamingProject string
-	renameBuf       string
+	renaming                          string
+	renamingProject                   string
+	nodeOpen                          bool
+	nodeTarget, nodeMethod, nodeDraft string
+	renameBuf                         string
 
 	renameFrames int
 	chrome       chrome // where the sidebar's animation puts things

@@ -138,6 +138,7 @@ func (a *App) view(c *ui.Context) {
 	a.pickerView(c, pal)
 	a.confirmView(c, pal)
 	a.worktreeView(c, pal)
+	a.nodeVersionDialog(c, pal)
 	a.snippetDialog(c, pal)
 	a.sshDialog(c, pal)
 	// A preview that showed no more fades in anew next time.
@@ -365,6 +366,9 @@ func (a *App) groupView(c *ui.Context, pal *palette, g group, gi int) {
 	}
 	pointerTooltip(c, hdr, "tip-project-"+key, g.host.shortDir(g.project.Dir))
 	hdr.ContextMenu(func(m *ui.Menu) {
+		if m.Item("设置 Node 版本…").Disabled(id == "").Chosen() {
+			a.nodeOpen, a.nodeTarget, a.nodeMethod, a.nodeDraft = true, id, "project.node-version", g.project.NodeVersion
+		}
 		if m.Item(locales.ActionNewSession()).Chosen() {
 			a.newSessionOn(g.host, id)
 		}
@@ -418,6 +422,7 @@ func (a *App) groupView(c *ui.Context, pal *palette, g group, gi int) {
 			fg = pal.text
 		}
 		ui.Text(c, g.project.Name).FontSize(13.5).FontWeight(400).TextColor(fg).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
+		nodeVersionBadge(c, pal, g.project.NodeVersion)
 		if g.host.remote() {
 			a.hostTag(c, pal, g.host)
 		}
@@ -589,6 +594,7 @@ func (a *App) sessionTab(c *ui.Context, pal *palette, s *proto.Session, row ui.E
 		if s.Status == proto.Exited && !s.Unread {
 			name.TextColor(pal.textMuted)
 		}
+		nodeVersionBadge(c, pal, s.NodeVersion)
 		close := ui.ButtonBase(c.Key("close-tab")).Size(20, 20).Shrink(0).Radius(5).Center().TextColor(pal.textFaint).
 			Label(locales.ActionCloseSession()).Tooltip(a.tip(locales.ActionCloseSession(), "session.close"))
 		if !selected && !hovered {
@@ -645,6 +651,9 @@ func (a *App) renameStarted(c *ui.Context) bool {
 
 func (a *App) sessionMenu(m *ui.Menu, s *proto.Session) {
 	id := s.ID
+	if m.Item("设置 Node 版本…").Chosen() {
+		a.nodeOpen, a.nodeTarget, a.nodeMethod, a.nodeDraft = true, id, "session.node-version", s.NodeVersion
+	}
 	if a.menuShortcut(m.Item(locales.SessionRename()), "session.rename").Chosen() {
 		a.startRename(id)
 	}

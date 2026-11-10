@@ -1,8 +1,11 @@
 package daemon
 
 import (
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -109,4 +112,37 @@ func testEnv(t *testing.T) []string {
 	}
 	// Windows' programs need its own variables to start.
 	return append(exec.Command("cmd").Environ(), "TERM=xterm-256color")
+}
+
+// TestInstalledNodeVersions 验证列表扫描与启动解析使用同一套版本、数值排序和过滤规则。
+func TestInstalledNodeVersions(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	nvm, fnm := filepath.Join(home, "nvm"), filepath.Join(home, "fnm")
+	t.Setenv("NVM_DIR", nvm)
+	t.Setenv("FNM_DIR", fnm)
+	for _, rel := range []string{"nvm/versions/node/v22.9.0/bin", "nvm/versions/node/v22.10.0/bin", "fnm/node-versions/v20.18.0/installation/bin", "nvm/versions/node/invalid/bin"} {
+		dir := filepath.Join(home, filepath.FromSlash(rel))
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "node"), nil, 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var versions []string
+	for _, n := range installedNodes() {
+		versions = append(versions, n.version)
+	}
+	if !slices.Equal(versions, []string{"22.10.0", "22.9.0", "20.18.0"}) {
+		t.Fatalf("versions: %v", versions)
+	}
+	bin, err := nodeBin("22")
+	if err != nil || bin != filepath.Join(nvm, "versions", "node", "v22.10.0", "bin") {
+		t.Fatalf("resolved bin %q: %v", bin, err)
+	}
+	if _, err := nodeBin("24"); err == nil {
+		t.Fatal("missing version resolved")
+	}
 }
