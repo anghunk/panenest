@@ -1,6 +1,6 @@
 {
   "name": "PaneNest",
-  "identifier": "local.abc.panenest",
+  "identifier": "app.panenest",
   "version": "0.0.3",
   "out": "build",
   "i18n": {
