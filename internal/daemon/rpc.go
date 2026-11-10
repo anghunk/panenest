@@ -30,6 +30,14 @@ func (d *Daemon) call(c *controlConn, method string, raw json.RawMessage) (any, 
 		return nil, fmt.Errorf("no session or pane %q", ref)
 	}
 	switch method {
+	case "workspace.export":
+		return d.exportWorkspace(), nil
+	case "workspace.import":
+		var in proto.WorkspaceRecords
+		if err := decode(&in); err != nil {
+			return nil, err
+		}
+		return d.importWorkspace(in)
 	case "state":
 		return d.state(), nil
 

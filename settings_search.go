@@ -62,6 +62,7 @@ func settingsIndex() []searchEntry {
 
 		{"shell", locales.SetShell(), "command fish zsh bash login"},
 		{"shell", locales.SetScrollback(), "scrollback-limit history buffer lines memory"},
+		{"advanced", "导入与导出", "backup import export json 配置 备份 导入 导出 项目 标签页"},
 		{"shell", "默认 Node 版本", "node nodejs nvm fnm version 版本"},
 		{"shell", locales.SetEnvironment(), "env variables path"},
 

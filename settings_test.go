@@ -1,9 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"runtime"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -712,5 +714,46 @@ func TestAdListToggles(t *testing.T) {
 	tt.Frame()
 	if tt.HasText("EasyPrivacy") {
 		t.Error("the lists show while Block ads is off")
+	}
+}
+
+// TestConfigurationBackupDecode 验证备份配置往返、格式校验和损坏文件处理。
+func TestConfigurationBackupDecode(t *testing.T) {
+	config := settings.Default()
+	config.NodeVersion = "22.14.0"
+	config.Env = []string{"DEMO=value"}
+	backup := configurationBackup{Format: "panenest-configuration", Version: 1, Configuration: settings.Reference(config)}
+	data, err := json.Marshal(backup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, got, err := decodeConfigurationBackup(strings.NewReader(string(data)))
+	if err != nil || got.NodeVersion != config.NodeVersion || !slices.Equal(got.Env, config.Env) {
+		t.Fatalf("configuration round trip: %+v, %v", got, err)
+	}
+	for _, bad := range []string{`{}`, `{"format":"panenest-configuration","version":99}`, string(data) + ` {}`, strings.Replace(string(data), `"workspace":`, `"unknown":`, 1)} {
+		if _, _, err := decodeConfigurationBackup(strings.NewReader(bad)); err == nil {
+			t.Fatalf("accepted invalid backup: %s", bad)
+		}
+	}
+}
+
+// TestConfigurationBackupSettingsView 检查导入导出入口在明暗主题中均可见。
+func TestConfigurationBackupSettingsView(t *testing.T) {
+	for _, dark := range []bool{false, true} {
+		a := testApp(t)
+		a.ss.page = "advanced"
+		a.ss.draft = map[string]string{}
+		tt := ui.NewTester(a.settingsView, 820, 700)
+		tt.SetDark(dark)
+		tt.Frame()
+		if !tt.HasText("导入配置…") || !tt.HasText("导出配置…") {
+			t.Fatalf("backup controls missing: %q", tt.Texts())
+		}
+		name := "light"
+		if dark {
+			name = "dark"
+		}
+		shot(t, tt, "configuration-backup-"+name)
 	}
 }

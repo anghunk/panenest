@@ -52,6 +52,7 @@ var settingsPages = []settingsPage{
 
 // settingsState is what the Settings window keeps besides the settings.
 type settingsState struct {
+	backupBusy   bool
 	page         string
 	recording    string // the action whose shortcut is being typed
 	recordRef    ui.Handle
@@ -1113,6 +1114,7 @@ func codeBlock(c *ui.Context, pal *palette, code string) {
 }
 
 func (a *App) advancedPage(c *ui.Context, pal *palette) {
+	a.configurationBackupGroup(c, pal)
 	settingsGroup(c, pal, locales.SetConfiguration(), locales.SetConfigurationDetail(), func() {
 		settingRow(c, pal, locales.SetConfigFile(), proto.ShortDir(settings.Path()), func() {
 			if button(c, "reveal-config", locales.CommonShowIn(fileManager()), "", false, pal) {

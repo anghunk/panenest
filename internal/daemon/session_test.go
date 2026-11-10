@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -288,4 +289,48 @@ func TestAgentPane(t *testing.T) {
 	}
 	a.shellPID = os.Getpid()
 	check("under the app server a's Codex started", server.Process.Pid, "", "b", true)
+}
+
+// TestWorkspaceImportExport 验证元数据往返、分屏重映射、重复导入及失败时不改动工作区。
+func TestWorkspaceImportExport(t *testing.T) {
+	d := projectDaemon(t)
+	in := proto.WorkspaceRecords{Projects: []proto.Project{{ID: "project", Name: "Demo", Dir: "/demo", NodeVersion: "22.14.0"}}, Tabs: []proto.WorkspaceTab{{Project: "project", Name: "Task", NodeVersion: "20.18.0", Panes: []proto.WorkspacePane{{ID: "one", Dir: "/demo/a"}, {ID: "two", Dir: "/demo/b"}}, Layout: &proto.Layout{Row: true, Ratio: 0.5, A: &proto.Layout{Pane: "one"}, B: &proto.Layout{Pane: "two"}}}}}
+	added, err := d.importWorkspace(in)
+	if err != nil || added != 1 {
+		t.Fatalf("import %d: %v", added, err)
+	}
+	t.Cleanup(func() {
+		for _, s := range d.sessions {
+			for _, p := range s.panes {
+				p.term.Close()
+			}
+		}
+	})
+	s := d.sessions[0]
+	if s.layout.A.Pane == "one" || s.layout.A.Pane != s.panes[0].info.ID {
+		t.Fatal("layout identifiers not remapped")
+	}
+	if s.panes[0].proc != nil || s.panes[0].info.Status != proto.Exited {
+		t.Fatal("import started a terminal")
+	}
+	s.panes[0].info.Command = []string{"secret command"}
+	s.panes[0].term.Feed([]byte("private output"))
+	exported := d.exportWorkspace()
+	data, err := json.Marshal(exported)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "secret command") || strings.Contains(string(data), "private output") {
+		t.Fatal("terminal content included in export")
+	}
+	if exported.Projects[0].NodeVersion != "22.14.0" || exported.Tabs[0].NodeVersion != "20.18.0" {
+		t.Fatal("node versions lost")
+	}
+	if added, err := d.importWorkspace(in); err != nil || added != 0 || len(d.projects) != 1 {
+		t.Fatalf("duplicate import %d: %v", added, err)
+	}
+	in.Tabs[0].Layout.A.Pane = "missing"
+	if _, err := d.importWorkspace(in); err == nil || len(d.sessions) != 1 || len(d.projects) != 1 {
+		t.Fatal("invalid import changed workspace")
+	}
 }

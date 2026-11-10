@@ -613,3 +613,12 @@ func Reference(s Settings) string {
 	}
 	return b.String()
 }
+
+// ParseBackup 校验导入文件中的配置，并使用正常配置加载的默认值与约束。
+func ParseBackup(data string) (Settings, error) {
+	s, problems := parse(data)
+	if len(problems) > 0 {
+		return Settings{}, fmt.Errorf("配置无效：%s", strings.Join(problems, "; "))
+	}
+	return s, nil
+}
