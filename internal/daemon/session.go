@@ -181,6 +181,19 @@ func (s *pane) start(command []string, env []string) error {
 
 	if bin != "" && name == "zsh" {
 		env = append(env[:len(env):len(env)], zshEnv(bin)...)
+		// 每个窗格使用独立的命令历史，恢复窗格时继续使用同一文件。
+		history := filepath.Join(s.d.dir, "sessions", s.info.ID+".zsh_history")
+		if err := os.MkdirAll(filepath.Dir(history), 0700); err != nil {
+			return err
+		}
+		f, err := os.OpenFile(history, os.O_CREATE|os.O_WRONLY, 0600)
+		if err != nil {
+			return err
+		}
+		if err := f.Close(); err != nil {
+			return err
+		}
+		env = append(env, "PANENEST_HISTORY_FILE="+history)
 	}
 	dir := s.info.Dir
 	if st, err := os.Stat(dir); dir == "" || err != nil || !st.IsDir() {

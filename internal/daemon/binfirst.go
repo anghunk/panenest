@@ -46,6 +46,10 @@ func writeZshenv(bin string) error {
 __panenest_bin_first() {
   path=(__PANENEST_BIN_PATH__ ${path:#__PANENEST_BIN_PATH__})
   if [[ -n $PANENEST_NODE_INIT ]]; then eval "$PANENEST_NODE_INIT"; fi
+  if [[ -n $PANENEST_HISTORY_FILE ]]; then
+    unsetopt SHARE_HISTORY
+    builtin fc -p "$PANENEST_HISTORY_FILE" "$HISTSIZE" "$SAVEHIST"
+  fi
   precmd_functions=(${precmd_functions:#__panenest_bin_first})
   unfunction __panenest_bin_first
 }

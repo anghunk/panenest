@@ -468,7 +468,7 @@ func (d *Daemon) environment(sid, pid, shell string, extra []string) []string {
 		switch {
 		case k == "CLAUDECODE", k == "TERM_PROGRAM", k == "TERM_PROGRAM_VERSION", k == "TERM_SESSION_ID",
 			k == "ITERM_SESSION_ID", k == "WINDOWID", k == "KITTY_WINDOW_ID", k == "LC_TERMINAL", k == "LC_TERMINAL_VERSION",
-			k == "PANENEST_SESSION", k == "PANENEST_PANE", k == "PANENEST_HOST", k == "PANENEST_ZDOTDIR", k == takeoverEnv, k == "PANENEST_SERVICE", k == "INVOCATION_ID", k == "MYGO_GHOSTTY_VT", k == "TMUX", k == "TMUX_PANE",
+			k == "PANENEST_SESSION", k == "PANENEST_PANE", k == "PANENEST_HOST", k == "PANENEST_ZDOTDIR", k == "PANENEST_HISTORY_FILE", k == takeoverEnv, k == "PANENEST_SERVICE", k == "INVOCATION_ID", k == "MYGO_GHOSTTY_VT", k == "TMUX", k == "TMUX_PANE",
 			strings.HasPrefix(k, "CLAUDE_CODE_"), strings.HasPrefix(k, "GHOSTTY_"),
 			strings.HasPrefix(k, "VSCODE_"), strings.HasPrefix(k, "__CF"), k == "XPC_SERVICE_NAME":
 			continue

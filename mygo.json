@@ -1,7 +1,7 @@
 {
   "name": "PaneNest",
   "identifier": "app.panenest",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "out": "build",
   "i18n": {
     "dir": "locales",
