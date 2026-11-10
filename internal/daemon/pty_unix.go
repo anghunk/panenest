@@ -143,3 +143,6 @@ func ioctl(f *os.File, req uintptr, arg unsafe.Pointer) error {
 	}
 	return nil
 }
+
+// notifyNodeVersion 通知已安装回调的 shell 在自身环境中切换 Node。
+func (p *ptyProc) notifyNodeVersion() error { return p.cmd.Process.Signal(syscall.SIGWINCH) }

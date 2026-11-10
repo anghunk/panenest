@@ -333,6 +333,7 @@ func (d *Daemon) tickLoop() {
 		d.mu.Unlock()
 		changed := false
 		for _, s := range panes {
+			s.syncNodeVersion()
 			if s.tick(now) {
 				changed = true
 			}

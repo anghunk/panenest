@@ -44,8 +44,8 @@ func writeZshenv(bin string) error {
 	s := `if [[ -n $PANENEST_ZDOTDIR ]]; then ZDOTDIR=$PANENEST_ZDOTDIR; else unset ZDOTDIR; fi
 [[ -r ${ZDOTDIR:-$HOME}/.zshenv ]] && builtin source ${ZDOTDIR:-$HOME}/.zshenv
 __panenest_bin_first() {
-  path=(BIN ${path:#BIN})
-  if [[ -n $PANENEST_NODE_BIN ]]; then path=("$PANENEST_NODE_BIN" ${path:#$PANENEST_NODE_BIN}); fi
+  path=(__PANENEST_BIN_PATH__ ${path:#__PANENEST_BIN_PATH__})
+  if [[ -n $PANENEST_NODE_INIT ]]; then eval "$PANENEST_NODE_INIT"; fi
   precmd_functions=(${precmd_functions:#__panenest_bin_first})
   unfunction __panenest_bin_first
 }
@@ -55,5 +55,5 @@ precmd_functions+=(__panenest_bin_first)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, ".zshenv"), []byte(strings.ReplaceAll(s, "BIN", q)), 0o644)
+	return os.WriteFile(filepath.Join(dir, ".zshenv"), []byte(strings.ReplaceAll(s, "__PANENEST_BIN_PATH__", q)), 0o644)
 }

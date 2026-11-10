@@ -971,7 +971,7 @@ func (a *App) shellPage(c *ui.Context, pal *palette) {
 			}, 130, pal)
 		})
 	})
-	settingRow(c, pal, "默认 Node 版本", "选择本机 nvm / fnm 已安装版本；继承默认时使用 shell 默认版本，新建或重启终端后生效", func() {
+	settingRow(c, pal, "默认 Node 版本", "选择本机 nvm / fnm 已安装版本；空闲终端立即切换，运行中的程序结束后切换", func() {
 		a.nodeVersionPicker(c, pal, a.local(), &s.NodeVersion)
 	})
 	settingsGroup(c, pal, locales.SetEnvironment(), locales.SetEnvironmentDetail(), func() {

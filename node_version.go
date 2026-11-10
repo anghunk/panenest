@@ -17,7 +17,7 @@ func (a *App) nodeVersionDialog(c *ui.Context, pal *palette) {
 		floating(panel.Width(480).Padding(20).Gap(12).Radius(14).Background(pal.popover), pal).Label("设置 Node 版本")
 		ui.Text(c, "设置 Node 版本").FontSize(15).TextColor(pal.text)
 		a.nodeVersionPicker(c, pal, a.hostOf(a.nodeTarget), &a.nodeDraft)
-		ui.Text(c, "优先级：标签页 > 项目 > 全局默认。选择“继承默认”使用上一级。\n支持 nvm / fnm 已安装版本，新建或重启终端后生效。").FontSize(12).TextColor(pal.textMuted)
+		ui.Text(c, "优先级：标签页 > 项目 > 全局默认。选择“继承默认”使用上一级。\n支持 nvm / fnm 已安装版本。空闲终端立即切换，忙碌时在程序结束后切换。").FontSize(12).TextColor(pal.textMuted)
 		ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
 			ui.Button(c, "取消").OnClick(func() { a.nodeOpen = false })
 			ui.PrimaryButton(c, "保存").Disabled(a.nodeDraft != "" && !slices.Contains(a.hostOf(a.nodeTarget).nodeVersions, a.nodeDraft)).OnClick(func() {
@@ -114,7 +114,7 @@ func nodeVersionBadge(c *ui.Context, pal *palette, version string) {
 		label = "自定义"
 	}
 	ui.Row(c.Key("node-badge")).Height(18).Padding(0, 5).Radius(5).AlignItems(ui.Center).Shrink(0).
-		Background(pal.chip).Tooltip("Node " + version + "\n新建或重启终端时应用").Children(func() {
+		Background(pal.chip).Tooltip("Node " + version + "\n空闲终端立即应用，忙碌时延后切换").Children(func() {
 		ui.Text(c, label).FontSize(10.5).FontWeight(400).TextColor(pal.textMuted).SingleLine().MaxWidth(76).Ellipsis("…")
 	})
 }

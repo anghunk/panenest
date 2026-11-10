@@ -386,3 +386,8 @@ func environmentBlock(env []string) []uint16 {
 	}
 	return append(b, 0)
 }
+
+// notifyNodeVersion Windows 控制台暂不支持 POSIX shell 的信号回调。
+func (p *ptyProc) notifyNodeVersion() error {
+	return errors.New("当前平台不支持 Node 实时切换")
+}

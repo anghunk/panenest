@@ -115,10 +115,38 @@ func (s *pane) nodeVersion() string {
 	return strings.TrimSpace(settings.Load().NodeVersion)
 }
 
-// nodeShellArgs 在用户启动文件加载后加入 Node 路径，避免登录 shell 覆盖选择。
-func nodeShellArgs(shell, bin, node string, command []string) ([]string, []string, error) {
+// nodeActivation 使用安装版本对应的管理器切换环境；自定义目录直接加入 PATH。
+func nodeActivation(shell, node string) string {
+	versionDir := filepath.Dir(node)
+	if shell != "fish" && filepath.Base(filepath.Dir(versionDir)) == "node" && filepath.Base(filepath.Dir(filepath.Dir(versionDir))) == "versions" {
+		root := filepath.Dir(filepath.Dir(filepath.Dir(versionDir)))
+		version := filepath.Base(versionDir)
+		return "if ! command -v nvm >/dev/null 2>&1; then . " + shellQuote(shell, filepath.Join(root, "nvm.sh")) + "; fi; nvm use --silent " + shellQuote(shell, version)
+	}
+	if filepath.Base(versionDir) == "installation" {
+		version := filepath.Base(filepath.Dir(versionDir))
+		if shell == "fish" {
+			return "if command -q fnm; fnm use " + shellQuote(shell, version) + "; else; set -gx PATH " + shellQuote(shell, node) + " $PATH; end"
+		}
+		return `if command -v fnm >/dev/null 2>&1; then eval "$(fnm env --shell ` + shellQuote(shell, shell) + `)"; fnm use ` + shellQuote(shell, version) + "; else export PATH=" + shellQuote(shell, node) + `:"$PATH"; fi`
+	}
+	if shell == "fish" {
+		return "set -gx PATH " + shellQuote(shell, node) + " $PATH"
+	}
+	return "export PATH=" + shellQuote(shell, node) + `:"$PATH"`
+}
+
+// nodeShellArgs 在用户启动文件加载后切换 Node，避免登录 shell 覆盖选择。
+func nodeShellArgs(shell, bin, node string, command []string, control ...string) ([]string, []string, error) {
 	name := shellName(shell)
-	q := shellQuote(name, node)
+	activation := ""
+	if node != "" {
+		activation = nodeActivation(name, node)
+	}
+	initial := activation
+	if len(control) > 0 && control[0] != "" {
+		activation = nodeLiveSetup(name, control[0], activation)
+	}
 	switch name {
 	case "zsh":
 		if err := writeZshenv(bin); err != nil {
@@ -126,12 +154,14 @@ func nodeShellArgs(shell, bin, node string, command []string) ([]string, []strin
 		}
 		args := shellArgs(shell, bin, command)
 		if len(command) > 0 {
-			args[len(args)-1] = "export PATH=" + q + `:"$PATH"; ` + args[len(args)-1]
+			if initial != "" {
+				args[len(args)-1] = initial + "; " + args[len(args)-1]
+			}
 		}
-		return args, append(zshEnv(bin), "PANENEST_NODE_BIN="+node), nil
+		return args, append(zshEnv(bin), "PANENEST_NODE_INIT="+activation), nil
 	case "fish":
 		args := shellArgs(shell, bin, command)
-		init := "set -gx PATH " + q + " $PATH"
+		init := activation
 		if len(command) > 0 {
 			script := args[len(args)-1]
 			if bin != "" {
@@ -148,7 +178,7 @@ func nodeShellArgs(shell, bin, node string, command []string) ([]string, []strin
 		rc := filepath.Join(dir, "bashrc")
 		script := `if [ -r ~/.bash_profile ]; then . ~/.bash_profile; elif [ -r ~/.bash_login ]; then . ~/.bash_login; elif [ -r ~/.profile ]; then . ~/.profile; fi
 [ -r ~/.bashrc ] && . ~/.bashrc
-export PATH=` + q + `:"$PATH"
+` + activation + `
 rm -f ` + shellQuote(name, rc) + `; rmdir ` + shellQuote(name, dir) + "\n"
 		if len(command) > 0 {
 			script += shellJoin(name, command) + `; printf '\033]133;D;%s\007' "$?"` + "\n"
@@ -159,4 +189,60 @@ rm -f ` + shellQuote(name, rc) + `; rmdir ` + shellQuote(name, dir) + "\n"
 		return []string{name, "--rcfile", rc, "-i"}, nil, nil
 	}
 	return nil, nil, fmt.Errorf("设置 Node 版本暂支持 zsh、bash 和 fish；当前 shell 为 %s", name)
+}
+
+// nodeLiveSetup 注册当前 shell 的切换回调；信号只发送给已确认安装回调的进程。
+func nodeLiveSetup(name, control, initial string) string {
+	q := shellQuote(name, control)
+	applying := shellQuote(name, control+".applying")
+	ready := shellQuote(name, control+".ready")
+	if initial != "" {
+		initial += "; "
+	}
+	if name == "fish" {
+		return "set -g __panenest_node_original_path $PATH; function __panenest_node_update --on-signal WINCH; if test -f " + q + "; command mv " + q + " " + applying + "; source " + applying + " >/dev/null; command rm -f " + applying + "; end; end; " + initial + "printf '%s' $fish_pid > " + ready
+	}
+	return `__panenest_node_original_path="$PATH"; ` + "__panenest_node_update() { if [ -f " + q + " ]; then command mv " + q + " " + applying + " && { . " + applying + " >/dev/null; command rm -f " + applying + "; }; fi; }; trap '__panenest_node_update' WINCH; " + initial + `printf '%s' "$$" > ` + ready
+}
+
+// nodeControlPath 是本终端专用的切换脚本，不修改用户的 shell 配置。
+func (s *pane) nodeControlPath() string { return filepath.Join(s.d.dir, "node", s.info.ID+".sh") }
+
+// syncNodeVersion 在 shell 空闲时静默切换版本，保留编辑中的输入；忙碌时下次重试。
+func (s *pane) syncNodeVersion() {
+	version := s.nodeVersion()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed || s.proc == nil || s.info.Browser() || s.nodeVersionApplied == version || s.nodeControl == "" {
+		return
+	}
+	if s.proc.Foreground() != s.shellPID {
+		return
+	}
+	ready, err := os.ReadFile(s.nodeControl + ".ready")
+	if err != nil || string(ready) != strconv.Itoa(s.shellPID) {
+		return
+	}
+	name := s.info.Shell
+	var activation string
+	if version == "" {
+		if name == "fish" {
+			activation = "if functions -q nvm; nvm use default; else if command -q fnm; fnm use default; else; set -gx PATH $__panenest_node_original_path; end"
+		} else {
+			activation = "if command -v nvm >/dev/null 2>&1; then nvm use --silent default; elif command -v fnm >/dev/null 2>&1; then fnm use default; else export PATH=\"$__panenest_node_original_path\"; fi"
+		}
+	} else {
+		node, err := nodeBin(version)
+		if err != nil {
+			return
+		}
+		activation = nodeActivation(name, node)
+	}
+	if err := writeAtomic(s.nodeControl, []byte(activation+"\n")); err != nil {
+		return
+	}
+	if err := s.proc.notifyNodeVersion(); err != nil {
+		return
+	}
+	s.nodeVersionApplied = version
 }

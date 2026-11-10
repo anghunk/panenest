@@ -46,11 +46,12 @@ type pane struct {
 	clients      map[*attachment]struct{}
 	// claimer is the client the user claimed the pane in last (claim), nil
 	// once it detached; stamp orders the clients' asks and claims.
-	claimer  *attachment
-	stamp    uint64
-	shellPID int
-	fgPGID   int
-	cwdAt    time.Time
+	claimer                         *attachment
+	stamp                           uint64
+	nodeControl, nodeVersionApplied string
+	shellPID                        int
+	fgPGID                          int
+	cwdAt                           time.Time
 
 	dirty bool // output since the history on disk
 	// seen is what the screen showed when the status last came from it,
@@ -146,17 +147,32 @@ func (s *pane) start(command []string, env []string) error {
 	name := shellName(shell)
 	bin := s.d.binFirst()
 	args := shellArgs(shell, bin, command)
-	env = append(env[:len(env):len(env)], "PANENEST_NODE_BIN=")
-	if version := s.nodeVersion(); version != "" {
-		node, err := nodeBin(version)
+	env = append(env[:len(env):len(env)], "PANENEST_NODE_INIT=")
+	version := s.nodeVersion()
+	node := ""
+	if version != "" {
+		var err error
+		node, err = nodeBin(version)
 		if err != nil {
 			return err
 		}
+	}
+	control := ""
+	if name == "zsh" || name == "bash" || name == "fish" {
+		control = s.nodeControlPath()
+		if err := os.MkdirAll(filepath.Dir(control), 0700); err != nil {
+			return err
+		}
+		os.Remove(control + ".ready")
+		os.Remove(control)
 		if bin == "" {
 			bin = filepath.Join(s.d.dir, "bin")
 		}
+	}
+	if control != "" || version != "" {
 		var extra []string
-		args, extra, err = nodeShellArgs(shell, bin, node, command)
+		var err error
+		args, extra, err = nodeShellArgs(shell, bin, node, command, control)
 		if err != nil {
 			return err
 		}
@@ -183,6 +199,7 @@ func (s *pane) start(command []string, env []string) error {
 	}
 	s.mu.Lock()
 	s.proc = proc
+	s.nodeControl, s.nodeVersionApplied = control, version
 	s.shellPID = proc.PID()
 	s.info.PID = s.shellPID
 	s.info.Dir = dir
@@ -762,9 +779,15 @@ func (s *pane) close() {
 	close(s.changed) // wakes those waiting on it
 	s.changed = make(chan struct{})
 	proc := s.proc
+	control := s.nodeControl
 	clients := s.clients
 	s.clients = map[*attachment]struct{}{}
 	s.mu.Unlock()
+	if control != "" {
+		for _, suffix := range []string{"", ".ready", ".applying"} {
+			os.Remove(control + suffix)
+		}
+	}
 	for c := range clients {
 		c.send(proto.FrameClosed, nil)
 		c.finish()
