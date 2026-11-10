@@ -291,7 +291,9 @@ func TestNodeVersionShellStartup(t *testing.T) {
 											t.Fatal("shell ended during switch")
 										}
 										output += chunk
-										if strings.Contains(output, "\r\nLIVE_DRAFT\r\n") && strings.Contains(output, "v18.0.0") {
+										// 新版 Bash 在执行命令前输出括号粘贴控制序列；按可见文本检查，避免误判草稿丢失。
+										visible := strings.NewReplacer("\x1b[?2004h", "", "\x1b[?2004l", "", "\r", "").Replace(output)
+										if strings.Contains(visible, "\nLIVE_DRAFT\n") && strings.Contains(visible, "\nv18.0.0\n") {
 											if strings.Contains(output, "export PATH=") || strings.Contains(output, "nvm use --silent") {
 												t.Fatalf("切换命令出现在终端：%s", output)
 											}
