@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.2
+
+- 接通 PaneNest 自有 GitHub Releases 自动更新源，支持校验签名后下载和安装更新。
+- 发布流程包含各平台的签名更新包、更新清单与可选增量包。
+
 ## 2.1.27
 
 - Paper is the theme a window starts with, and `theme` names Kero's

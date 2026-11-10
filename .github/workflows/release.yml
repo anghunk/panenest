@@ -97,9 +97,17 @@ jobs:
       - name: 安装 Windows 安装包工具
         if: startsWith(matrix.platform, 'windows/')
         run: sudo apt-get update && sudo apt-get install -y nsis
-      # 使用项目的本地签名配置，不需要上游证书或自动更新密钥。
-      - name: 构建应用
-        run: go tool mygo build -platform "${{ matrix.platform }}"
+      # 应用使用本地签名；自动更新包使用 PaneNest 自有密钥签名。
+      - name: 构建应用与签名更新包
+        env:
+          MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$MYGO_UPDATER_PRIVATE_KEY" ]]; then
+            echo "::error::请配置 MYGO_UPDATER_PRIVATE_KEY Secret，发布必须包含签名更新包"
+            exit 1
+          fi
+          go tool mygo build -platform "${{ matrix.platform }}"
       - name: 收集分发包
         env:
           TARGET: ${{ matrix.target }}
@@ -111,6 +119,13 @@ jobs:
             windows-*) cp build/"$TARGET"/*-setup-*.exe dist/ ;;
             linux-*) cp build/"$TARGET"/*.deb build/"$TARGET"/*.tar.gz dist/ ;;
           esac
+          # 清单内的完整包与可选增量包必须同时发布。
+          cp build/"$TARGET"/update-"$TARGET".json dist/
+          cp build/"$TARGET"/*.tar.gz dist/
+          for delta in build/"$TARGET"/*.delta; do
+            [[ -f "$delta" ]] || continue
+            cp "$delta" dist/
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-${{ matrix.target }}

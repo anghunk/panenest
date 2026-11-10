@@ -1,7 +1,7 @@
 {
   "name": "PaneNest",
   "identifier": "local.abc.panenest",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "out": "build",
   "i18n": {
     "dir": "locales",
@@ -15,5 +15,9 @@
       "NSCameraUsageDescription": "A program running in PaneNest would like to use the camera.",
       "NSAppleEventsUsageDescription": "A program running in PaneNest would like to control another app."
     }
+  },
+  "updates": {
+    "github": "anghunk/panenest",
+    "publicKey": "vOd1k5SCFqT6dPPBkAcljYT0rA8nii0dn6T8oQXvJ9Q="
   }
 }
