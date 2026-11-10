@@ -145,7 +145,7 @@ func (a *App) snippetDialog(c *ui.Context, pal *palette) {
 	if a.snippetEdit != nil {
 		title, saveLabel = "编辑片段", "保存修改"
 	}
-	ui.DialogBase(c.Key("create-snippet"), &a.snippetOpen, func(backdrop, panel ui.Element) {
+	if ui.DialogBase(c.Key("create-snippet"), &a.snippetOpen, func(backdrop, panel ui.Element) {
 		backdrop.Background(pal.overlay)
 		floating(panel.Width(520).Padding(20).Gap(10).Radius(14).Background(pal.popover), pal).Label(title)
 		ui.Row(c).AlignItems(ui.Center).Children(func() {
@@ -195,5 +195,8 @@ func (a *App) snippetDialog(c *ui.Context, pal *palette) {
 				a.snippetQuery = ""
 			})
 		})
-	})
+	}).Dismissed() {
+		// 保留输入内容，只允许通过弹窗按钮关闭，避免遮罩或 Escape 误触。
+		a.snippetOpen = true
+	}
 }
