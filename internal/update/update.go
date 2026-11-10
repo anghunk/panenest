@@ -30,7 +30,7 @@ import (
 )
 
 // PublicKey 验证自有发布包；配置独立更新服务时需与 mygo.json 保持一致。
-const PublicKey = ""
+const PublicKey = "vOd1k5SCFqT6dPPBkAcljYT0rA8nii0dn6T8oQXvJ9Q="
 
 // Repo 是自有发布仓库。留空时通过源码构建更新。
 const Repo = ""
