@@ -1484,6 +1484,267 @@ func TestProjectOrderWhileHostLoads(t *testing.T) {
 	}
 }
 
+// TestProjectFolderPersistence 验证文件夹信息、未加载项目归属和不改变顺序的换组能持久化。
+func TestProjectFolderPersistence(t *testing.T) {
+	a := testApp(t)
+	a.st.Projects = append(a.st.Projects, proto.Project{ID: "p2", Name: "工作接口"})
+	a.mergeState(a.local(), a.st)
+	h := withHost(t, a, "build")
+	remote := proto.State{Projects: a.projectsOf(h), Sessions: a.sessionsOf(h)}
+	personal, work := a.createProjectFolder("个人"), a.createProjectFolder("工作")
+	if personal == "" || work == "" || personal == work || a.createProjectFolder(" \t ") != "" {
+		t.Fatal("文件夹标识或空名称处理错误")
+	}
+	a.moveProjectToFolder("p1", personal)
+	a.moveProjectToFolder("rp-build", personal)
+	a.moveProjectToFolder("p2", work)
+	a.renameProjectFolder(personal, "  个人项目  ")
+	a.renameProjectFolder(work, " \n ")
+	a.projectFolderByID(personal).Collapsed = true
+	a.moveProjectFolder(work, personal, false)
+	if a.prefs.ProjectFolders[0].ID != work || a.projectFolderByID(work).Name != "工作" || a.projectFolderByID(personal).Name != "个人项目" {
+		t.Fatal("文件夹排序、改名或空名称处理错误")
+	}
+	a.prefs.ProjectOrder = []string{"rp-build", "p1", "p2"}
+	a.mergeState(h, proto.State{})
+	h.loaded, h.conn = false, connConnecting
+	// p1 已紧邻 p2；只换组也必须保存，且不丢失尚未加载的 rp-build。
+	a.moveProject("p1", "p2", false)
+	if !slices.Equal(a.prefs.ProjectOrder, []string{"rp-build", "p1", "p2"}) || a.projectFolderOf("p1") != work || a.projectFolderOf("rp-build") != personal {
+		t.Fatalf("换组丢失顺序或未加载项目归属：%q，%v", a.prefs.ProjectOrder, a.prefs.ProjectFolder)
+	}
+	restored := newApp()
+	if restored.projectFolderOf("p1") != work || restored.projectFolderOf("rp-build") != personal || !restored.projectFolderByID(personal).Collapsed || restored.prefs.ProjectFolders[0].ID != work {
+		t.Fatal("重启后文件夹信息或项目归属未恢复")
+	}
+	a.mergeState(h, remote)
+	h.loaded, h.conn = true, connReady
+	if a.projectFolderOf("rp-build") != personal || a.groups()[0].key() != "rp-build" {
+		t.Fatal("远程加载后项目的分组或位置丢失")
+	}
+	a.mergeState(h, proto.State{})
+	h.loaded = false
+	a.deleteProjectFolder(personal)
+	if a.projectFolderByID(personal) != nil || a.projectFolderOf("rp-build") != "" || a.prefs.ProjectFolder["rp-build"] != "" || a.projectFolderOf("p1") != work {
+		t.Fatal("删除文件夹未清理隐藏项目归属，或影响了其他分组")
+	}
+	if a.selected != "s1" || len(a.st.Projects) != 2 || len(a.st.Sessions) != 1 {
+		t.Fatal("文件夹操作改变了当前会话或项目记录")
+	}
+	restored = newApp()
+	if restored.projectFolderByID(personal) != nil || restored.projectFolderOf("rp-build") != "" || restored.projectFolderOf("p1") != work {
+		t.Fatal("文件夹删除未持久化")
+	}
+	// 本机其他会话的空项目标识也可以分组。
+	a.st.Sessions = append(a.st.Sessions, proto.Session{ID: "loose"})
+	a.moveProjectToFolder("", work)
+	if a.projectFolderOf("") != work {
+		t.Fatal("空项目标识不能加入分组")
+	}
+}
+
+// TestProjectFolderDragAndCollapse 验证空组与折叠组接收、跨组排序、移出、文件夹排序及取消拖拽。
+func TestProjectFolderDragAndCollapse(t *testing.T) {
+	a := testApp(t)
+	a.st.Projects[0].Name = "个人网页"
+	a.st.Projects = append(a.st.Projects,
+		proto.Project{ID: "p2", Name: "工作接口"},
+		proto.Project{ID: "p3", Name: "临时脚本"},
+		proto.Project{ID: "p4", Name: "待整理项目"})
+	personal, work := a.createProjectFolder("个人项目"), a.createProjectFolder("工作项目")
+	tt := ui.NewTester(a.view, 1100, 700)
+	tt.Frame()
+	drag := func(source, target string, position float32, cancel bool) {
+		t.Helper()
+		from, ok := tt.Find(source)
+		to, found := tt.Find(target)
+		if !ok || !found {
+			t.Fatalf("找不到拖拽来源 %q 或目标 %q：%q", source, target, tt.Texts())
+		}
+		x, y := to.X+24, to.Y+to.H*position
+		tt.Press(from.X+24, from.Y+from.H/2)
+		tt.Move(x, y)
+		if cancel {
+			tt.Key(0, ui.KeyEscape)
+		}
+		tt.Release(x, y)
+		tt.Frame()
+		if a.selected != "s1" {
+			t.Fatal("拖拽改变了当前会话")
+		}
+	}
+	clickFolder := func(name string) {
+		t.Helper()
+		if err := tt.Click(name); err != nil {
+			t.Fatal(err)
+		}
+		for range 3 {
+			tt.Frame()
+		}
+		if a.selected != "s1" {
+			t.Fatal("文件夹展开收起改变了当前会话")
+		}
+	}
+	checkOrder := func(folder string, want ...string) {
+		t.Helper()
+		var got []string
+		var bottom float32
+		for _, g := range a.groups() {
+			if a.projectFolderOf(g.key()) != folder {
+				continue
+			}
+			got = append(got, g.key())
+			r, ok := tt.Find(g.project.Name)
+			if !ok || r.Y < bottom {
+				t.Fatalf("分组内项目 %q 的显示顺序错误：%v", g.key(), r)
+			}
+			bottom = r.Y + r.H
+		}
+		if !slices.Equal(got, want) {
+			t.Fatalf("分组项目顺序 %q，期望 %q", got, want)
+		}
+	}
+	drag("个人网页", "个人项目", 0.5, false)
+	if a.projectFolderOf("p1") != personal {
+		t.Fatal("空文件夹未接收项目")
+	}
+	clickFolder("个人项目")
+	if r, visible := tt.Find("个人网页"); !a.projectFolderByID(personal).Collapsed || (visible && r.X < a.prefs.SidebarWidth) {
+		t.Fatalf("文件夹收起后仍显示侧栏项目：collapsed=%v，项目位置=%v", a.projectFolderByID(personal).Collapsed, r)
+	}
+	drag("工作接口", "个人项目", 0.5, false)
+	if a.projectFolderOf("p2") != personal {
+		t.Fatal("折叠文件夹未接收项目")
+	}
+	if a.projectFolderByID(personal).Collapsed {
+		clickFolder("个人项目")
+	}
+	checkOrder(personal, "p1", "p2")
+	drag("临时脚本", "工作项目", 0.5, false)
+	if a.projectFolderOf("p3") != work {
+		t.Fatal("工作文件夹未接收项目")
+	}
+	drag("临时脚本", "工作接口", 0.1, false)
+	checkOrder(personal, "p1", "p3", "p2")
+	drag("工作接口", "个人网页", 0.1, false)
+	checkOrder(personal, "p2", "p1", "p3")
+	drag("临时脚本", "未分组", 0.5, false)
+	if a.projectFolderOf("p3") != "" {
+		t.Fatal("项目未移回未分组")
+	}
+	checkOrder(personal, "p2", "p1")
+	drag("临时脚本", "工作项目", 0.5, true)
+	if a.projectFolderOf("p3") != "" {
+		t.Fatal("Escape 未取消项目换组")
+	}
+	drag("工作项目", "个人项目", 0.1, false)
+	if a.prefs.ProjectFolders[0].ID != work {
+		t.Fatal("文件夹拖拽未改变顺序")
+	}
+	drag("工作项目", "个人项目", 0.9, true)
+	if a.prefs.ProjectFolders[0].ID != work {
+		t.Fatal("Escape 未取消文件夹排序")
+	}
+	shot(t, tt, "project-folders-light")
+	tt.SetDark(true)
+	tt.Advance(time.Second)
+	tt.Frame()
+	shot(t, tt, "project-folders-dark")
+	a.prefs.SidebarWidth = minSidebar
+	tt.Frame()
+	shot(t, tt, "project-folders-narrow-dark")
+	tt.SetDark(false)
+	tt.Advance(time.Second)
+	tt.Frame()
+	shot(t, tt, "project-folders-narrow-light")
+	a.moveProjectToFolder("p3", work)
+	a.moveProjectToFolder("p4", work)
+	tt.Frame()
+	if _, visible := tt.Find("未分组"); visible {
+		t.Fatal("未分组项目为空时仍显示标题")
+	}
+	a.moveProjectToFolder("p3", "")
+	tt.Frame()
+	if _, visible := tt.Find("未分组"); !visible {
+		t.Fatal("项目移出分组后未恢复未分组标题")
+	}
+}
+
+// TestProjectFolderNameEditing 验证新建和改名的输入焦点、提交及取消行为。
+func TestProjectFolderNameEditing(t *testing.T) {
+	a := testApp(t)
+	tt := ui.NewTester(a.view, 1100, 700)
+	tt.Frame()
+	if err := tt.Click("新建分组"); err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		tt.Frame()
+	}
+	id := a.folderEdit.id
+	if id == "" || !tt.Focused("分组名称") {
+		t.Fatal("新建分组未保持名称输入焦点")
+	}
+	tt.Key(ui.Cmd, ui.KeyA)
+	tt.Type("个人项目")
+	tt.Key(0, ui.KeyEnter)
+	tt.Frame()
+	if f := a.projectFolderByID(id); f == nil || f.Name != "个人项目" || a.folderEdit.id != "" {
+		t.Fatal("新建分组名称未提交")
+	}
+	a.startProjectFolderEdit(id)
+	tt.Frame()
+	tt.Key(ui.Cmd, ui.KeyA)
+	tt.Type("工作项目")
+	tt.Key(0, ui.KeyEnter)
+	tt.Frame()
+	if a.projectFolderByID(id).Name != "工作项目" || a.folderEdit.id != "" {
+		t.Fatal("分组改名未提交")
+	}
+	a.startProjectFolderEdit(id)
+	tt.Frame()
+	tt.Key(ui.Cmd, ui.KeyA)
+	tt.Type("取消的名称")
+	tt.Key(0, ui.KeyEscape)
+	tt.Frame()
+	if a.projectFolderByID(id).Name != "工作项目" || a.folderEdit.id != "" {
+		t.Fatal("Escape 未取消分组改名")
+	}
+	if err := tt.Click("新建分组"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Key(0, ui.KeyEscape)
+	tt.Frame()
+	if len(a.prefs.ProjectFolders) != 1 || a.folderEdit.id != "" {
+		t.Fatal("Escape 未撤销尚未确认的新分组")
+	}
+	if a.selected != "s1" || newApp().projectFolderByID(id).Name != "工作项目" {
+		t.Fatal("分组编辑改变了当前会话，或改名未保存")
+	}
+}
+
+// TestProjectFolderEditingAfterProjectRename 验证从项目改名进入分组新建后输入仍可继续。
+func TestProjectFolderEditingAfterProjectRename(t *testing.T) {
+	a := testApp(t)
+	tt := ui.NewTester(a.view, 1100, 700)
+	tt.Frame()
+	a.startProjectRename("p1")
+	for range 3 {
+		tt.Frame()
+	}
+	if err := tt.Click("新建分组"); err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		tt.Frame()
+	}
+	if a.folderEdit.id == "" || !tt.Focused("分组名称") {
+		t.Fatal("项目重命名失焦后抢走新建分组的输入焦点")
+	}
+	tt.Key(0, ui.KeyEscape)
+	tt.Frame()
+}
+
 // TestSSHModeIsolation 验证同一项目中的 SSH 会话不会混入终端列表或标签，并分别恢复选择。
 func TestSSHModeIsolation(t *testing.T) {
 	a := testApp(t)

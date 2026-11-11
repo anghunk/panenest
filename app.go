@@ -52,6 +52,8 @@ type prefs struct {
 	Project          string            `json:"project,omitempty"`
 	ProjectSessions  map[string]string `json:"projectSessions,omitempty"`
 	ProjectOrder     []string          `json:"projectOrder,omitempty"`
+	ProjectFolders   []projectFolder   `json:"projectFolders,omitempty"`
+	ProjectFolder    map[string]string `json:"projectFolder,omitempty"`
 	SidebarWidth     float32           `json:"sidebarWidth,omitempty"`
 	SidebarHidden    bool              `json:"sidebarHidden,omitempty"`
 	FontSize         float32           `json:"fontSize,omitempty"`
@@ -141,6 +143,7 @@ type App struct {
 
 	renaming                          string
 	renamingProject                   string
+	folderEdit                        projectFolderEdit
 	nodeOpen                          bool
 	nodeTarget, nodeMethod, nodeDraft string
 	renameBuf                         string
@@ -512,7 +515,7 @@ func (a *App) groups() []group {
 	return gs
 }
 
-// moveProject 将项目移到目标项目之前或之后，并保留尚未加载的项目顺序。
+// moveProject 将项目移到目标项目所在分组的指定位置，保留尚未加载的项目顺序。
 func (a *App) moveProject(key, target string, after bool) {
 	var keys []string
 	for _, g := range a.groups() {
@@ -528,7 +531,8 @@ func (a *App) moveProject(key, target string, after bool) {
 	if from < to {
 		to--
 	}
-	if from == to {
+	folder := a.projectFolderOf(target)
+	if from == to && a.projectFolderOf(key) == folder {
 		return
 	}
 	order := slices.Clone(a.prefs.ProjectOrder)
@@ -546,6 +550,7 @@ func (a *App) moveProject(key, target string, after bool) {
 		to++
 	}
 	a.prefs.ProjectOrder = slices.Insert(order, to, key)
+	a.setProjectFolder(key, folder)
 	a.savePrefs()
 }
 
@@ -1544,6 +1549,9 @@ func (a *App) startRename(id string) {
 	if s == nil {
 		return
 	}
+	if a.folderEdit.id != "" {
+		a.finishProjectFolderEdit(false)
+	}
 	a.renaming, a.renamingProject, a.renameBuf, a.renameFrames = id, "", s.DisplayName(a.set.SessionName), 0
 }
 
@@ -1564,6 +1572,9 @@ func (a *App) commitRename() {
 func (a *App) startProjectRename(id string) {
 	for _, p := range a.st.Projects {
 		if p.ID == id {
+			if a.folderEdit.id != "" {
+				a.finishProjectFolderEdit(false)
+			}
 			a.renaming, a.renamingProject, a.renameBuf, a.renameFrames = "", id, p.Name, 0
 		}
 	}

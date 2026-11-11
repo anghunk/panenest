@@ -263,36 +263,7 @@ func (a *App) sidebar(c *ui.Context, pal *palette, bar ui.TitleBar) {
 	// The space between and below the rows moves the window, as the top
 	// bar does.
 	ui.Scroll(c.Key("projects")).Grow(1).Padding(8, 10, 16, 10).DragWindow().Children(func() {
-		gi := 0 // the groups shown, the first of which sits higher
-		seen := map[*host]bool{}
-		showHost := func(h *host) {
-			if h.remote() && a.hostNeedsRow(h) {
-				top := float32(18)
-				if gi == 0 {
-					top = 2
-				}
-				a.hostLine(c, pal, h, top)
-				gi++
-			}
-		}
-		// 项目按用户保存的顺序平铺；主机状态跟随其第一个项目。
-		for _, g := range a.groups() {
-			if !g.host.remote() && !g.host.loaded {
-				continue
-			}
-			g.first = !seen[g.host]
-			if g.first {
-				showHost(g.host)
-				seen[g.host] = true
-			}
-			a.groupView(c, pal, g, gi)
-			gi++
-		}
-		for _, h := range a.hosts[1:] {
-			if !seen[h] {
-				showHost(h)
-			}
-		}
+		a.projectList(c, pal)
 		if local := a.local(); local.loaded && len(a.st.Sessions) == 0 && local.conn == connReady && len(a.hosts) == 1 {
 			ui.Text(c, locales.SidebarNoSessions()).FontSize(12.5).TextColor(pal.textFaint).Padding(8, 10)
 		}
@@ -304,8 +275,11 @@ func (a *App) sidebar(c *ui.Context, pal *palette, bar ui.TitleBar) {
 	c.After(20 * time.Second) // times ago move on
 }
 
-// projectDrag 用项目标识区分侧栏排序与窗格拖拽，兼容未分组会话。
-type projectDrag struct{ key string }
+// projectDrag 统一侧栏拖拽载荷；folder 区分文件夹与项目，避免覆盖投放类型。
+type projectDrag struct {
+	key    string
+	folder bool
+}
 
 // groupView 绘制用于切换项目的平级列表项，保留项目管理菜单和会话状态汇总。
 func (a *App) groupView(c *ui.Context, pal *palette, g group, gi int) {
@@ -343,13 +317,13 @@ func (a *App) groupView(c *ui.Context, pal *palette, g group, gi int) {
 	}
 	renaming := id != "" && a.renamingProject == id
 	if !renaming {
-		hdr.Drag(projectDrag{key})
+		hdr.Drag(projectDrag{key: key})
 		if hdr.Dragging() {
 			hdr.Opacity(0.45)
 		}
 		_, y, _ := hdr.PointerPosition()
 		after := y >= hdr.Bounds().H/2
-		if d, over := ui.DragOver[projectDrag](hdr); over && d.key != key {
+		if d, over := ui.DragOver[projectDrag](hdr); over && !d.folder && d.key != key {
 			hdr.DrawOver(func(p *ui.Painter, r ui.Rect) {
 				if after {
 					r.Y += r.H - 2
@@ -357,7 +331,7 @@ func (a *App) groupView(c *ui.Context, pal *palette, g group, gi int) {
 				p.Fill(ui.Rect{X: r.X + 4, Y: r.Y, W: r.W - 8, H: 2}, pal.accent, 1)
 			})
 		}
-		if d, ok := ui.Drop[projectDrag](hdr); ok && d.key != key {
+		if d, ok := ui.Drop[projectDrag](hdr); ok && !d.folder && d.key != key {
 			a.defer_(func() { a.moveProject(d.key, key, after) })
 		}
 	}
@@ -375,6 +349,21 @@ func (a *App) groupView(c *ui.Context, pal *palette, g group, gi int) {
 		if m.Item(locales.SessionRename()).Disabled(id == "").Chosen() {
 			a.startProjectRename(id)
 		}
+		m.Submenu("移到分组", func(m *ui.Menu) {
+			folder := a.projectFolderOf(key)
+			if m.Item("未分组").Checked(folder == "").Chosen() {
+				a.defer_(func() { a.moveProjectToFolder(key, "") })
+			}
+			for _, f := range a.prefs.ProjectFolders {
+				if m.Item(f.Name).Checked(folder == f.ID).Chosen() {
+					a.defer_(func() { a.moveProjectToFolder(key, f.ID) })
+				}
+			}
+			m.Separator()
+			if m.Item("新建分组…").Chosen() {
+				a.defer_(func() { a.newProjectFolder(key, true) })
+			}
+		})
 		m.Separator()
 		// A remote group's menu has its host's, as the host has no header.
 		if g.host.remote() {
