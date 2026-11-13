@@ -1,13 +1,14 @@
 {
   "name": "PaneNest",
   "identifier": "app.panenest",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "out": "build",
   "i18n": {
     "dir": "locales",
     "source": "en"
   },
   "macos": {
+    "icon": "resources/icon-macos.icns",
     "signingIdentity": "-",
     "entitlements": "entitlements.plist",
     "infoPlist": {
